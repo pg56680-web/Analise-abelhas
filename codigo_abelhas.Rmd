@@ -1,0 +1,712 @@
+---
+output:
+  pdf_document:
+    df_print: kable
+    number_sections: true
+    keep_tex: true
+    latex_engine: xelatex
+    highlight: arrow
+  html_document:
+    df_print: paged
+geometry: left=2cm, top=2cm, bottom=2cm, right=2cm
+linkcolor: black
+lang: "pt-br"
+fontsize: 12pt
+papersize: a4
+linestretch: 1.5
+header-includes:
+- \usepackage{setspace}
+- "\\setcounter{page}{-0}"
+- \setlength{\parindent}{1.25cm}
+- \usepackage{cancel}
+- \usepackage{booktabs}
+- \usepackage{amsmath}
+- \usepackage{xcolor}
+- \renewcommand{\CancelColor}{\color{red}}
+- \usepackage[most]{tcolorbox}
+- \usepackage{slashbox}
+- \usepackage{pict2e}
+- \usepackage{enumitem}
+- \usepackage{graphicx}
+---
+
+
+ <!-- Ajustar o tamanho da fonte na capa -->
+\thispagestyle{empty}
+\begin{center}
+\fontsize{12pt}{14pt}\selectfont
+\singlespacing
+  UNIVERSIDADE ESTADUAL DE MARINGÁ\\
+  PROGRAMA DE PÓS-GRADUAÇÃO EM ENGENHARIA DE ALIMENTOS - PEG\\
+  ESTATÍSTICA APLICADA - Prof. Dra. Emília\\
+\end{center}
+
+\begin{flushleft}
+\fontsize{12pt}{14pt}\selectfont
+\singlespacing
+    \textbf{Acadêmico:} Jessica Hemily de Sá Gonçalves \\
+    \textbf{Artigo}: Feeding with plant powders increases longevity and body weight of Western honeybee workers (Apis mellifera)
+  \end{flushleft}
+
+
+ <!-- Voltar ao tamanho de fonte padrão -->
+\fontsize{9pt}{11pt}\selectfont
+
+-   Artigo disponível em: <https://link.springer.com/article/10.1007/s13592-024-01094-4>   
+
+
+
+# Objetivo do estudo
+
+Este trabalho reproduz as principais análises estatísticas do artigo *Feeding with plant powders increases longevity and body weight of Western honeybee workers (Apis mellifera)* (Brown et al., 2024). O estudo investigou se a suplementação alimentar de abelhas-operárias (*Apis mellifera*) com diferentes pós vegetais poderia melhorar indicadores de saúde das colônias.
+
+Para isso, os autores compararam um grupo controle alimentado apenas com solução de sacarose a 50% com 12 grupos experimentais que receberam a mesma solução enriquecida com diferentes pós vegetais. Foram avaliados três desfechos principais:
+
+- **Consumo de sacarose**, para verificar se os diferentes suplementos alteravam o padrão de alimentação das abelhas;
+- **Peso seco corporal**, utilizado como indicador do estado nutricional e da condição física dos indivíduos;
+- **Longevidade (sobrevivência)**, utilizada para avaliar o efeito dos suplementos sobre o tempo de vida das abelhas.
+
+Ao longo deste documento, cada uma dessas variáveis será analisada utilizando a mesma metodologia estatística descrita no artigo, reproduzindo os modelos, testes e gráficos apresentados pelos autores.
+
+
+
+# Bibliotecas
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
+library(psych)
+library(FSA)
+library(lme4)
+library(lmerTest)
+library(nlme)
+library(car)
+library(fitdistrplus)
+library(gtools)
+library(ggplot2)
+library(moments)
+library(knitr)
+```
+
+# Estratégia estatística
+
+As análises estatísticas foram divididas em três etapas, cada uma destinada à avaliação de uma variável resposta.
+
+## Consumo de sacarose
+
+- **Variável resposta:** Consumo diário de sacarose (loss).
+ 
+- **Variáveis explicativas:** Tratamento (Treatment) e tempo (day).
+
+- **Modelo empregado:** Regressão linear com efeito polinomial de terceiro grau.
+
+$$
+\text{loss}=\beta_0+\beta_1\text{Treatment}+\beta_2\text{day}
++\beta_3\text{day}^2+\beta_4\text{day}^3+\varepsilon
+$$
+
+
+Posteriormente, foram realizadas comparações múltiplas entre cada tratamento e o grupo controle utilizando o teste de Dunnett.
+
+## Peso seco corporal
+
+- **Variável resposta:** Peso seco corporal (dry_weight).
+
+- **Variável explicativa:** Tempo (day).
+
+Inicialmente foi ajustado o modelo
+
+$$
+\text{dry\_weight}=\beta_0 + \beta_1*\text{day} + \varepsilon
+$$
+
+Como os resíduos não apresentaram distribuição normal, foram utilizados o teste de Kruskal-Wallis e comparações múltiplas pelo teste de Wilcoxon com correção de Benjamini-Hochberg.
+
+## Longevidade
+
+- **Variável resposta:** Tempo até a morte (day).
+- **Variável explicativa:** Tratamento (Treatment).
+
+A função de sobrevivência foi estimada pelo estimador de Kaplan-Meier,
+
+$$
+\hat{S}(t)=\prod_{t_i\le t}\left(1-\frac{d_i}{n_i}\right)
+$$
+
+e as curvas foram comparadas por meio do teste Log-rank, com correção de Benjamini-Hochberg para comparações múltiplas.
+
+
+
+# Análise do Consumo de Sacarose 
+
+\subsection{Delineamento do experimento}
+
+O experimento foi conduzido utilizando um total de 2028 abelhas operárias (\textit{Apis mellifera}), distribuídas em 13 tratamentos. Cada tratamento foi composto por seis gaiolas (réplicas), contendo 26 abelhas em cada uma, totalizando
+
+$$
+13 \times 6 \times 26 = 2028 \text{ abelhas}.
+$$
+
+Os tratamentos consistiram em uma solução de sacarose a 50\% (\textit{controle}) ou em solução de sacarose acrescida de um dos 12 diferentes pós vegetais avaliados.
+
+\textbf{Unidade experimental:} Gaiola - 78 gaiolas avaliadas por até 69 dias.
+
+\subsection{Consumo de sacarose}
+
+O consumo de sacarose foi avaliado diariamente durante todo o período experimental. Para isso, as seringas contendo a solução alimentar foram pesadas a cada 24 horas. A diferença entre duas pesagens consecutivas representou a quantidade de alimento consumida pelas abelhas durante aquele intervalo de tempo.
+
+Em seguida, esse valor foi dividido pelo número de abelhas vivas presentes em cada gaiola, obtendo-se o consumo médio diário de sacarose por abelha.
+
+\subsection{Objetivo da análise}
+
+A análise do consumo de sacarose teve como objetivo verificar se a adição de diferentes pós vegetais à solução de sacarose influenciava o consumo alimentar das abelhas, isto é, se algum tratamento levava a um aumento ou redução na ingestão da solução.
+
+Os resultados mostraram que, de maneira geral, não houve diferenças significativas no consumo de sacarose entre os tratamentos, indicando que a adição dos pós vegetais não alterou o comportamento alimentar das abelhas.
+
+
+## Carregamento e Preparação dos Dados
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df_loss <- read_excel("Plant-Powder-All-Data-Final.xlsx", sheet = 1)
+kable(head(df_loss,7),
+      caption = "Primeiras observações da base de dados de consumo de sacarose.",
+      digits = 2
+)
+
+kable(slice(df_loss, 9:17), digits = 3)
+```
+
+```{r include=FALSE}
+df_loss$Treatment <- as.factor(df_loss$Treatment)
+df_loss$Treatment <- ordered(df_loss$Treatment,
+                     levels = c("Sucrose","Laurus nobilis","Quercus spp", "Curcuma longa",
+                                "Hypericum spp","Spirulina platensins", "Calendulae officinalis",
+                                "Chlorella vulgaris", "Melissa officinalis","Moringa oleifera",
+                                "Rosa canina","Trigonella foenum-graecum", "Urtica dioica"))
+levels(df_loss$Treatment)
+```
+
+
+- **Variável resposta:** Consumo diário de sacarose (loss).
+   
+   
+```{r echo=FALSE, fig.height=3.5, fig.width=7, message=FALSE, warning=FALSE}
+hist(
+  df_loss$loss, 
+  main = "Distribuição do Consumo de Sacarose", 
+  xlab = "Consumo de Sacarose (mg)",            
+  ylab = "Frequência Absoluta",                  
+  col = "lightblue",                            
+  border = "white",                             
+  cex.lab = 0.8, cex.axis = 0.8, cex.main = 0.9
+)
+```
+
+
+   
+- **Variáveis explicativas:** Tratamento (Treatment) e tempo (day).
+   
+```{r echo=FALSE, fig.height=3.5, fig.width=7, message=FALSE, warning=FALSE}
+library(ggplot2)
+
+ggplot(df_loss, aes(x = day, y = loss, color = Treatment)) +
+  geom_point(alpha = 0.2, position = position_jitter(width = 0.2)) + 
+  stat_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE, size = 1.2) +
+  labs(
+    title = "Consumo Diário de Sacarose por Tratamento",
+    x = "Tempo (Dias)",
+    y = "Consumo de Sacarose (mg)",
+    color = "Tratamentos"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 10),
+    legend.title = element_text(size = 8),
+    legend.text = element_text(size = 7)
+  )
+```
+
+
+## Ajuste do Modelo Polinomial (Regressão Cúbica)
+
+Como o consumo de sacarose ao longo dos dias não segue uma linha reta simples, ajustamos um modelo linear com polinômio de 3º grau (poly(day, 3, raw=T)) para a variável temporal. Isso permite capturar curvas em formato de "S" no consumo de alimentos. O argumento raw=TRUE é utilizado para gerar polinômios brutos ($x, x^2, x^3$), facilitando a interpretação matemática direta da equação do modelo.
+
+
+$$
+\text{loss}=\beta_0+\beta_1\text{Treatment}+\beta_2\text{day}
++\beta_3\text{day}^2+\beta_4\text{day}^3+\varepsilon
+$$
+
+
+
+```{r}
+df_loss$Treatment <- as.factor(df_loss$Treatment)
+df_loss$Treatment <- ordered(df_loss$Treatment,
+                     levels = c("Sucrose","Laurus nobilis","Quercus spp", "Curcuma longa",
+                                "Hypericum spp","Spirulina platensins", "Calendulae officinalis",
+                                "Chlorella vulgaris", "Melissa officinalis","Moringa oleifera",
+                                "Rosa canina","Trigonella foenum-graecum", "Urtica dioica"))
+levels(df_loss$Treatment)
+```
+
+```{r}
+best = lm(loss ~ factor(Treatment) + poly(day,3, raw=T), data=df_loss)
+summary(best)
+```
+
+
+## Análise de Variância para Significância da Regressão em Regressão Múltipla
+
+
+Para verificar a significância global do modelo de regressão múltipla ajustado para o consumo de sacarose, realizamos o teste $F$ da Análise de Variância (ANOVA). Esse teste avalia simultaneamente se algum dos coeficientes associados aos tratamentos ou aos termos polinomiais do tempo ($day$, $day^2$ e $day^3$) é estatisticamente diferente de zero.
+
+As hipóteses testadas são estruturadas da seguinte forma:
+
+\begin{itemize}
+    \item \textbf{Hipótese Nula ($H_0$):} $\beta_1 = \beta_2 = \beta_3 = \beta_4 = 0$
+    
+    A hipótese nula assume que nenhum dos tratamentos com pós vegetais e nenhuma das potências do tempo possuem efeito sobre o consumo de sacarose. O modelo prediz tão bem quanto a média amostral ($\bar{Y}$).
+    
+    \item \textbf{Hipótese Alternativa ($H_1$):} Pelo menos um $\beta_j \neq 0$ (para $j = 1, 2, 3, 4$).
+    
+    A hipótese alternativa afirma que pelo menos uma das variáveis explicativas (seja um tratamento específico ou o comportamento temporal do componente polinomial) possui efeito significativo para explicar a variação no consumo de sacarose das abelhas.
+\end{itemize}
+
+Se o p-valor associado à estatística $F$ do teste for menor que o nível de significância adotado ($\alpha = 0,05$), rejeita-se $H_0$, justificando a relevância do modelo múltiplo completo adotado pelos autores.
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\linewidth]{anova_tabela.png}
+\caption{Tabela de análise de variância (ANOVA) para modelos de regressão linear. Fonte: Introduction to Linear Regression Analysis, Montgomery et al. (2021, p. 85).}
+    \label{fig:esquema_projeto}
+\end{figure}
+
+
+### SQ regressão
+
+A Soma de Quadrados da Regressão (SQReg) quantifica a variabilidade explicada pelo modelo ajustado e é dada por
+
+\[
+SQ_{\text{Reg}}
+=
+\sum_{i=1}^{n}(\hat{y}_i-\bar{y})^2,
+\]
+
+em que \(\hat{y}_i\) corresponde ao valor ajustado (predito) pelo modelo para a \(i\)-ésima observação.
+
+```{r}
+media <- mean(df_loss$loss)
+yi <- best$fitted.values
+SQ_reg <- sum((yi - media)^2)
+npar <- length(best$coefficients)   # p
+gl_reg <- npar - 1
+data.frame("SQ_reg"=SQ_reg, "gl_reg" = gl_reg)
+```
+
+### SQ resíduo
+
+A Soma de Quadrados dos Resíduos (SQRes) representa a variabilidade não explicada pelo modelo e é calculada por
+
+\[
+SQ_{\text{Res}}
+=
+\sum_{i=1}^{n}(y_i-\hat{y}_i)^2.
+\]
+
+
+```{r}
+media <- mean(df_loss$loss)
+SQ_res <- sum((df_loss$loss - yi)^2)
+npar <- length(best$coefficients)   #p
+n <- length(best$fitted.values)
+gl_res <- n-npar  # n - p
+data.frame("SQ_res"=SQ_res, "gl_res" = gl_res)
+```
+
+### SQ total
+
+A Soma de Quadrados Total (SQT) mede a variabilidade total da variável resposta em torno de sua média e é calculada por:
+
+\[
+SQ_{\text{Total}}
+=
+\sum_{i=1}^{n}(y_i-\bar{y})^2,
+\]
+
+em que \(y_i\) representa o valor observado da variável resposta, \(\bar{y}\) é a média amostral da variável resposta e \(n\) é o número de observações.
+
+```{r}
+media <- mean(df_loss$loss)
+SQ_t <- sum((df_loss$loss - media)^2)
+gl_t <- length(best$fitted.values)- 1
+data.frame("SQ_T"=SQ_t, "gl_t" = gl_t)
+```
+
+Uma propriedade fundamental da regressão linear é a decomposição da variabilidade total, dada por
+
+\[
+SQ_{\text{Total}}
+=
+SQ_{\text{Reg}}
++
+SQ_{\text{Res}}.
+\]
+
+```{r}
+total <- SQ_reg + SQ_res
+total
+```
+
+
+### TABELA ANOVA
+
+```{r}
+QM_reg <- SQ_reg / gl_reg
+QM_res <- SQ_res / gl_res
+F_reg <- QM_reg / QM_res
+tab_anova <- data.frame(Fonte = c("Regressão", "Resíduo", "Total"),
+                        GL = c(gl_reg, gl_res, gl_t),
+                        SQ = c(SQ_reg, SQ_res, SQ_t),
+                        QM = c(QM_reg, QM_res, NA),
+                        F = c(F_reg, NA, NA))
+tab_anova
+```
+
+
+
+A Tabela xx apresenta a análise de variância (ANOVA) do modelo de regressão ajustado para o consumo de sacarose. A estatística de teste utilizada é dada por
+
+$$
+F=\frac{\text{Quadrado Médio da Regressão }(QM_{\text{Reg}})}{\text{Quadrado Médio do Resíduo  }(QM_{\text{Res}})}=
+\frac{\dfrac{SQ_{\text{Reg}}}{GL_{\text{Reg}}}}
+{\dfrac{SQ_{\text{Res}}}{GL_{\text{Res}}}},
+$$
+
+em que:
+
+\begin{itemize}
+    \item \(SQ_{\text{Reg}}\): Soma de Quadrados da Regressão;
+    \item \(SQ_{\text{Res}}\): Soma de Quadrados dos Resíduos;
+    \item \(GL_{\text{Reg}}\): graus de liberdade da regressão;
+    \item \(GL_{\text{Res}}\): graus de liberdade dos resíduos.
+\end{itemize}
+
+
+
+Essa estatística compara a variabilidade explicada pelo modelo com a variabilidade residual. Valores de \(F\) próximos de 1 indicam que o modelo não explica a variável resposta melhor do que o erro aleatório, enquanto valores elevados sugerem que a variabilidade explicada é substancialmente maior que a variabilidade residual.
+
+No modelo ajustado, obteve-se \(F(15,3852)=52,23\), com valor-\(p < 2,2\times10^{-16}\). O numerador possui 15 graus de liberdade, correspondentes aos efeitos dos tratamentos e aos três termos polinomiais do tempo, enquanto o denominador possui 3852 graus de liberdade, associados aos resíduos do modelo.
+
+\begin{itemize}  
+\item O p-valor é calculado achando-se a área sob a curva de densidade após o ponto da estatística observada ($52,23$), formalizado por $P(F_{(15, 3852)} \ge 52,23)$. Como a distribuição $F$ decai de forma assintótica extremamente rápida, a probabilidade de se obter um valor tão alto quanto $52,23$ por puro acaso é infinitesimal. O valor exato ultrapassou a precisão matemática do sistema, resultando no teto estatístico aproximado de $p < 2,2 \times 10^{-16}$.
+\end{itemize}
+
+```{r}
+qf(0.95,15,3852)
+```
+
+
+
+
+Considerando o nível de significância de 5\%, rejeita-se a hipótese nula
+
+\[
+H_0:\beta_1=\beta_2=\cdots=\beta_{15}=0,
+\]
+
+que afirma que nenhum dos coeficientes associados às variáveis explicativas difere de zero. Portanto, conclui-se que pelo menos um dos efeitos incluídos no modelo contribui significativamente para explicar a variação observada no consumo de sacarose.
+
+Além disso, o coeficiente de determinação foi \(R^2=0,169\), indicando que aproximadamente \(16,9\%\) da variabilidade do consumo de sacarose foi explicada pelo conjunto das variáveis explicativas (tratamento e tempo). O valor do coeficiente de determinação ajustado (\(R^2_{aj}=0,166\)) foi muito próximo ao \(R^2\), sugerindo que a inclusão dos termos no modelo foi adequada e não promoveu um aumento artificial da capacidade explicativa.
+
+O coeficiente de determinação (\(R^2\)) é definido por:
+
+$$
+R^2=\frac{SQ_{\text{Reg}}}{SQ_{\text{Total}}}
+=1-\frac{SQ_{\text{Res}}}{SQ_{\text{Total}}},
+$$
+
+O coeficiente de determinação ajustado (\(R^2_{aj}\)) é dado por:
+
+obs.: O $R_{ajustado}^2$ pode aumentar ou diminuir, dependendo da contribuição das covariáveis adicionadas. Diferentemente do $R^2$ que tem seu valor aumentado com a adição de covariáveis.
+
+$$
+R^2_{aj}
+=
+1-
+\left(
+\frac{SQ_{\text{Res}}/(n-p)}
+{SQ_{\text{Total}}/(n-1)}
+\right),
+$$
+
+```{r}
+r_2 <- SQ_reg/SQ_t
+r_2ajustado <- 1 - (SQ_res/(n-npar)) / (SQ_t/(n-1))
+
+data.frame("R quadrado" = round(r_2,3), "R quadrado ajustado" = round(r_2ajustado,3))
+```
+
+\newpage
+
+## Diagnóstico do Modelo
+
+O objetivo é checar os pressupostos de homocedasticidade (variância constante) e a normalidade dos resíduos do modelo ajustado.
+
+```{r fig.width=8, fig.height=5}
+par(mfrow = c(2,2))
+plot(best)
+```
+
+```{r fig.width=6, fig.height=3.6}
+par(mfrow = c(1,1))
+qqPlot(residuals(best))
+```
+
+# Análise do Peso Seco Corporal (Dry Body Weight)
+
+O peso seco das abelhas foi utilizado como uma medida da biomassa corporal, eliminando a influência da água presente no organismo. Para isso, nos dias 7 e 14 do experimento, foram selecionadas aleatoriamente três abelhas vivas de cada gaiola para pesagem.
+
+Após a pesagem inicial, as abelhas foram congeladas e, ao término do experimento, permaneceram em estufa de convecção a $65\,^{\circ}\mathrm{C}$ durante 96 horas. Em seguida, foram novamente pesadas, sendo essa segunda medida denominada \textit{peso seco}.
+
+Ao todo, foram obtidas
+$13 \times 6 \times 2 \times 3 = 468$
+observações, correspondentes a:
+
+\begin{itemize}
+    \item 13 tratamentos;
+    \item 6 gaiolas (réplicas) por tratamento;
+    \item 2 momentos de avaliação (dias 7 e 14);
+    \item 3 abelhas amostradas por gaiola em cada avaliação.
+\end{itemize}
+
+\subsection{Objetivo da análise}
+
+A análise do peso seco teve como objetivo avaliar se a suplementação da solução de sacarose com diferentes pós vegetais promovia aumento da biomassa corporal das abelhas em comparação ao tratamento controle.
+
+Os resultados indicaram que os tratamentos contendo \textit{Quercus spp.}, \textit{Hypericum spp.}, \textit{Spirulina platensis}, \textit{Melissa officinalis}, \textit{Moringa oleifera} e \textit{Trigonella foenum-graecum} proporcionaram aumento significativo no peso seco das abelhas em relação ao grupo controle.
+
+## Carregamento e Preparação dos Dados
+
+```{r message=FALSE, warning=FALSE}
+df_weight <- read_excel("Plant-Powder-All-Data-Final.xlsx", sheet = 3)
+df_weight$dry_weight <- as.numeric(df_weight$dry_weight)
+head(df_weight)
+
+kable(slice(df_weight, 9:17), digits = 3)
+
+```
+
+
+## Visualização Comparativa por Tratamento
+
+```{r echo=FALSE, fig.height=10, fig.width=15}
+df_weight$treatment <- as.factor(df_weight$treatment)
+df_weight$treatment <- ordered(df_weight$treatment,
+                               levels = c("Sucrose","Laurus nobilis","Quercus spp", "Curcuma longa",
+                                "Hypericum spp","Spirulina platensins", "Calendulae officinalis",
+                                "Chlorella vulgaris","Melissa officinalis","Moringa oleifera",
+                                "Rosa canina","Trigonella foenum-graecum", "Urtica dioica"))
+ggcolors <- c("#440154FF","#481F70FF","#443A83FF","#3B528BFF",
+              "#31688EFF","#287C8EFF","#21908CFF","#20A486FF",
+              "#35B779FF","#5DC863FF","#8FD744FF","#C7E020FF","#FDE725FF")
+par(mar=c(18,6,2,5)) # set boxplot margins
+df_weight$drymg <- df_weight$dry_weight*1000
+boxplot(df_weight$drymg~ df_weight$treatment, col=ggcolors, ylab = "",
+        xlab="",xaxt = "n", cex.main=2, cex.axis=2, main="")
+mtext(side=1, line=15.5, "Tratamentos", col="black", font=2,cex=2)
+mtext(side=2, line=3.5,"Massa (mg)", col="black", font=2,cex=2)
+labels<- levels(df_weight$treatment)
+text(x =  seq_along(labels), y = par("usr")[3] - (par("usr")[4] - par("usr")[3])/40, 
+     srt = 45, adj = 1, labels = labels, xpd = TRUE,cex = 1.8,font = 3)
+```
+
+```{r}
+model <- lm(df_weight$dry_weight~df_weight$day)
+summary(model)
+
+anova(model)
+```
+
+
+\subsection{Análise Crítica do Ajuste do Modelo Linear para Peso Seco}
+
+Os autores ajustaram um modelo de regressão linear simples para avaliar o comportamento do peso seco corporal ($Y$) em função do tempo em dias ($X$). A análise do \textit{output} gerado indica que o ajuste do modelo é extremamente fraco e estatisticamente inadequado para explicar o fenômeno pelos seguintes motivos:
+
+\begin{enumerate}
+    \item \textbf{Ausência de Significância Estatística do Efeito Temporal:}
+    O coeficiente angular associado à variável tempo ($\hat{\beta}_1 = 8,218 \times 10^{-5}$) apresenta um erro-padrão de $7,912 \times 10^{-5}$, resultando em um valor da estatística de teste $t = 1,039$. O p-valor correspondente é de $0,299$ ($p > 0,05$). Portanto, não há evidências estatísticas para rejeitar a hipótese nula de que $\beta_1 = 0$, o que indica que o tempo não possui efeito linear significativo sobre o peso seco das abelhas.
+    
+    \item \textbf{Coeficiente de Determinação Próximo a Zero ($R^2$):}
+    O coeficiente de determinação múltiplo ($R^2 = 0,002355$) revela que apenas $0,23\%$ da variabilidade total do peso seco corporal é explicada pela variação dos dias. O $R^2$ ajustado ($0,0001723$) é virtualmente nulo, indicando que o modelo linear estruturado não possui qualquer poder preditivo ou explicativo.
+    
+    \item \textbf{Insuficiência do Teste $F$ Global:}
+    O teste $F$ de significância global da regressão resultou em uma estatística $F = 1,079$ para $1$ e $457$ graus de liberdade, com um p-valor associado de $0,2995$. Isso confirma que o modelo linear proposto não é estatisticamente superior a um modelo ingênuo baseado puramente na média amostral dos pesos ($\bar{Y}$).
+\end{enumerate}
+
+
+
+## Teste não paramétrico de Kruskal-Wallis
+
+\textbf{Estratégia Estatística e Computacional:} 
+Como os pressupostos de normalidade dos resíduos foram violados, a estratégia adotada seguiu uma abordagem não paramétrica, estruturada em três passos:
+\begin{enumerate}
+    \item \textbf{Cálculo das Diferenças de Mediana:} Determinou-se a mediana de peso seco de cada grupo vegetal e subtraiu-se a mediana do grupo controle ($\Delta\text{Mediana} = \text{Mediana}_{\text{Tratamento}} - \text{Mediana}_{\text{Controle}}$) para quantificar o ganho ou perda de biomassa absoluto.
+    \item \textbf{Testes de Hipóteses Individuais:} Utilizou-se o teste de soma de postos de Wilcoxon (Mann-Whitney) para realizar as comparações múltiplas entre os grupos. Computacionalmente, o teste foi executado sem ajustes automáticos globais para permitir o isolamento exclusivo dos 12 contrastes de interesse (cada tratamento \textit{versus} a sacarose pura).
+    \item \textbf{Controle de Multiplicidade (FDR):} Aplicou-se a correção de Benjamini-Hochberg (BH) estritamente sobre o vetor dos 12 p-valores gerados contra o controle. Essa estratégia controla a Taxa de Falsas Descobertas, garantindo que o nível de significância global ($\alpha = 0,05$) seja respeitado.
+\end{enumerate}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# 1. Transformar em Fator Comum (NÃO use ordered = TRUE aqui)
+df_weight$treatment <- factor(df_weight$treatment,
+                              levels = c("Sucrose","Laurus nobilis","Quercus spp", "Curcuma longa",
+                                         "Hypericum spp","Spirulina platensins", "Calendulae officinalis",
+                                         "Chlorella vulgaris", "Melissa officinalis","Moringa oleifera",
+                                         "Rosa canina","Trigonella foenum-graecum", "Urtica dioica"))
+
+# 2. Calcular a diferença na mediana (Certifique-se se o nome é drymg ou dry_weight)
+mediana_controle <- median(df_weight$drymg[df_weight$treatment == "Sucrose"], na.rm = TRUE)
+resumo_medianas <- aggregate(drymg ~ treatment, data = df_weight, FUN = median)
+
+# 3. Executar o teste Wilcoxon sem ajuste automático (ajustaremos apenas as 12 ordens contra o controle)
+teste_wilcox <- pairwise.wilcox.test(df_weight$drymg, df_weight$treatment, 
+                                     p.adjust.method = "none")
+
+# 4. Criar vetor com os tratamentos para comparar (excluindo o controle)
+todos_tratamentos <- levels(df_weight$treatment)
+tratamentos_comparar <- todos_tratamentos[todos_tratamentos != "Sucrose"]
+
+# 5. Extrair com segurança os p-valores varrendo linhas e colunas da matriz
+p_valores_sucrose <- sapply(tratamentos_comparar, function(tr) {
+  p_val <- NA
+  if (tr %in% rownames(teste_wilcox$p.value) && "Sucrose" %in% colnames(teste_wilcox$p.value)) {
+    p_val <- teste_wilcox$p.value[tr, "Sucrose"]
+  } else if ("Sucrose" %in% rownames(teste_wilcox$p.value) && tr %in% colnames(teste_wilcox$p.value)) {
+    p_val <- teste_wilcox$p.value["Sucrose", tr]
+  }
+  return(p_val)
+})
+
+# 6. Aplicar a correção Benjamini-Hochberg (BH/FDR) estritamente sobre as comparações com o controle [cite: 79]
+p_valores_ajustados <- p.adjust(p_valores_sucrose, method = "BH")
+
+# 7. Montar a estrutura final da Tabela III de forma alinhada
+tabela_3_resultados <- data.frame(
+  Treatment = paste("Sucrose:", tratamentos_comparar),
+  Median_difference_mg = sapply(tratamentos_comparar, function(tr) {
+    resumo_medianas$drymg[resumo_medianas$treatment == tr] - mediana_controle
+  }),
+  p_value = as.numeric(p_valores_ajustados),
+  row.names = NULL
+)
+
+# Arredondar os valores para igualar ao artigo
+tabela_3_resultados$Median_difference_mg <- round(tabela_3_resultados$Median_difference_mg, 2)
+tabela_3_resultados$p_value <- round(tabela_3_resultados$p_value, 2)
+
+print(tabela_3_resultados)
+```
+
+
+
+\subsection{Crítica Metodológica: Dependência Temporal e Agrupamento}
+
+O artigo original tenta modelar o peso seco corporal ($dry\_weight$) inicialmente por meio de uma regressão linear simples baseada no tempo ($day$), agrupando posteriormente os dados dos dias 7 e 14 para aplicar o teste não paramétrico de Kruskal-Wallis. Contudo, essa abordagem apresenta uma limitação metodológica importante.
+
+A variável resposta foi coletada em dois momentos distintos no tempo para as mesmas unidades experimentais (as gaiolas de confinamento ou \textit{hoarding cages}). Para a aplicação válida tanto da regressão quanto do teste de Kruskal-Wallis, exige-se o pressuposto fundamental de que as observações sejam completamente independentes, tanto dentro de cada grupo quanto entre os grupos estudados. 
+
+Ao tratar cada abelha-operária como uma observação isolada, esse pressuposto é violado duplamente: primeiro, há dependência dentro do grupo porque abelhas que compartilham a mesma gaiola estão sujeitas ao mesmo microambiente e comportamento de consumo; segundo, há dependência entre os tempos (grupos dos dias 7 e 14) porque as medições subsequentes foram realizadas nas mesmas gaiolas ao longo do tempo. Essa correlação intraclasse (dependência de agrupamento e temporal) gera uma quebra de independência dos resíduos ($\varepsilon$), infla artificialmente o tamanho amostral efetivo e distorce os erros-padrão e os p-valores da análise.
+
+\subsection{Abordagem Estatística Ideal: Modelos Lineares de Efeitos Mistos (LMM)}
+
+Para corrigir a especificação incorreta sem desconsiderar a estrutura longitudinal dos dados, a estratégia estatística ideal consiste no ajuste de um \textbf{Modelo Linear de Efeitos Mistos (LMM)}. Esse modelo decompõe a variabilidade em efeitos fixos e efeitos aleatórios.
+
+Matematicamente, o modelo com \textbf{intercepto aleatório} é expresso por:
+
+\begin{equation}
+Y_{ijk} = \beta_0 + \beta_1 \cdot \text{Treatment}_i + \beta_2 \cdot \text{Day}_j + b_k \cdot I_k + \varepsilon_{ijk}
+\end{equation}
+
+Onde:
+\begin{itemize}
+    \item $Y_{ijk}$ representa o peso seco observado para a abelha no $j$-ésimo dia, sob o $i$-ésimo tratamento, pertencente à $k$-ésima gaiola.
+    \item $\beta_0, \beta_1, \beta_2$ são os parâmetros associados aos \textbf{efeitos fixos} do intercepto global, do tratamento e do tempo, respectivamente.
+    \item $b_k$ representa o \textbf{efeito aleatório de intercepto} associado à $k$-ésima gaiola, onde $b_k \sim N(0, \sigma^2_b)$. Ele captura a variabilidade sistemática existente entre as diferentes repetições experimentais.
+    \item $I_k$ é a \textbf{variável indicadora de agrupamento} (gaiola), que assume valor $I_k = 1$ se a abelha pertence à gaiola $k$, e $I_k = 0$ caso contrário.
+    \item $\varepsilon_{ijk}$ é o erro estocástico residual individual, onde $\varepsilon_{ijk} \sim N(0, \sigma^2)$.
+\end{itemize}
+
+
+# Sobrevivência
+
+A variável sobrevivência foi obtida por meio do acompanhamento individual de cada abelha ao longo de todo o experimento. Diariamente, registrava-se se cada indivíduo permanecia vivo ou se havia ocorrido o óbito, sendo esse monitoramento realizado até a morte da última abelha.
+
+\textcolor{red}{Como o experimento foi encerrado apenas após a morte de todos os indivíduos, praticamente não houve observações censuradas, uma vez que todas as abelhas apresentaram o evento de interesse (morte) antes do término do estudo.}
+
+
+
+O banco de dados de sobrevivência foi composto por uma observação para cada abelha, totalizando 2028 registros.
+
+As principais variáveis consideradas nessa análise foram:
+
+\begin{itemize}
+    \item tratamento;
+    \item tempo até a morte (em dias);
+    \item status do indivíduo (morreu).
+\end{itemize}
+
+\subsubsection{Objetivo da análise}
+
+A análise de sobrevivência teve como objetivo comparar a longevidade das abelhas submetidas aos diferentes tratamentos, verificando se a suplementação da solução de sacarose com diferentes pós vegetais aumentava o tempo de vida das abelhas em relação ao tratamento controle.
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
+df_survival <- read_excel("Plant-Powder-All-Data-Final.xlsx", sheet = 2)
+head(df_survival,8)
+
+kable(slice(df_survival, 19:27), digits = 3)
+
+df_survival$treatment <- factor(df_survival$treatment,
+                                levels = c("Sucrose","Laurus nobilis","Quercus spp", "Curcuma longa",
+                                "Hypericum spp","Spirulina platensins", "Calendulae officinalis",
+                                "Chlorella vulgaris", "Melissa officinalis","Moringa oleifera",
+                                "Rosa canina","Trigonella foenum-graecum", "Urtica dioica"))
+
+tabela_4_direta <- df_survival %>%
+  group_by(treatment) %>%
+  summarise(Minimum = min(day, na.rm = TRUE),
+            `1st quartile` = quantile(day, 0.25, na.rm = TRUE),
+            Median = median(day, na.rm = TRUE),
+            `3rd quartile` = quantile(day, 0.75, na.rm = TRUE),
+            Maximum = max(day, na.rm = TRUE)) %>%
+  ungroup() %>%
+  dplyr::rename(Treatment = treatment)
+print(tabela_4_direta)
+qf(0.95,4,5)
+qt(0.975,9)
+```
+
+
+```{r fig.height=10, fig.width=17, message=FALSE, warning=FALSE}
+library(survival)
+library(survminer)
+
+par(mar=c(7,8,2,6)) # set margins
+par(mfrow = c(1,1)) # will do 2 plots next to eachother
+fit<-survfit(Surv(df_survival$day, df_survival$status)~df_survival$treatment)
+lev<-length(levels(df_survival$treatment))
+
+ggcolors <- c("#440154FF","#481F70FF","#443A83FF","#3B528BFF","#31688EFF",
+              "#287C8EFF","#21908CFF","#20A486FF","#35B779FF","#5DC863FF",
+              "#8FD744FF","#C7E020FF","#FDE725FF")
+
+plot(fit, col=ggcolors, yaxt="n",yaxs="r",lwd=4,pch=10,cex=3,mark.time=T, cex.lab = 2,
+     xlab = "Tempo (dias)", ylab = "Probabilidade de sobrevivência (%)",
+     cex.axis=2, font.lab=2,frame.plot=T); 
+axis(side=2, at=pretty(fit$surv), cex.axis=2,
+     lab=paste0(pretty(fit$surv) * 100), las=TRUE)
+legend(44.5, 1,  levels(df_survival$treatment), col=ggcolors, lwd=4,cex = 1.5)
+```
+
