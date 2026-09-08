@@ -1,0 +1,487 @@
+---
+title: "Pós vegetais na alimentação de abelhas"
+subtitle: "Consumo, peso seco e sobrevivência de Apis mellifera"
+author: "Equipe de apresentação • Modelos Lineares e Não Lineares"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+lang: pt-BR
+output:
+  ioslides_presentation:
+    widescreen: true
+    smaller: false
+    self_contained: true
+    mathjax: default
+    slide_level: 2
+params:
+  arquivo: "Plant-Powder-All-Data-Final.xlsx"
+---
+
+<!-- Edite author acima com os nomes da equipe. Coloque a planilha junto deste
+Rmd e clique Knit. Instalação inicial, somente se necessário, no Console:
+install.packages(c('rmarkdown','knitr','readxl','ggplot2','survival','nlme','multcomp'))
+O documento não instala pacotes nem altera a planilha. Não requer xaringan,
+LaTeX, imagens externas ou o Rmd original. Fórmulas usam MathJax online.
+-->
+
+```{r setup, include=FALSE}
+# Evita rótulos <U+....> em sessões Windows iniciadas com locale inválido.
+if(.Platform$OS.type == 'windows')
+  suppressWarnings(Sys.setlocale('LC_CTYPE', 'Portuguese_Brazil.utf8'))
+pacotes <- c('rmarkdown','knitr','readxl','ggplot2','survival','nlme','multcomp')
+faltam <- pacotes[!vapply(pacotes, requireNamespace, logical(1), quietly=TRUE)]
+if(length(faltam)) stop('Instale no Console: install.packages(c(',
+  paste(sprintf('"%s"', faltam), collapse=', '), '))')
+library(ggplot2)
+library(survival)
+library(nlme)
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE,
+  fig.width=10, fig.height=4.6, dpi=150, fig.align='center',
+  out.width='95%', comment=NA, cache=FALSE)
+set.seed(2026)
+options(contrasts=c('contr.treatment','contr.poly'))
+theme_set(theme_minimal(base_size=15) + theme(
+  panel.grid.minor=element_blank(), plot.title=element_text(face='bold'),
+  plot.margin=margin(8,18,8,8)))
+fmt <- function(x, d=2) formatC(x, digits=d, format='f', decimal.mark=',')
+pv <- function(x) ifelse(is.na(x), NA, ifelse(x<0.001, '< 0,001', fmt(x,3)))
+tab <- function(x, ...) knitr::kable(x, row.names=FALSE, ...)
+verde <- '#176B62'; ouro <- '#C28A24'
+
+# Padronização explícita das grafias encontradas nas três abas.
+normalizar <- function(x) {
+ x <- trimws(x)
+ x[x=='Moringa oelifera'] <- 'Moringa oleifera'
+ x[x=='Spirulina platensins'] <- 'Spirulina platensis'
+ x[x=='Calendulae officinalis'] <- 'Calendula officinalis'
+ x
+}
+lev <- c('Sucrose','Laurus nobilis','Quercus spp','Curcuma longa',
+ 'Hypericum spp','Spirulina platensis','Calendula officinalis',
+ 'Chlorella vulgaris','Melissa officinalis','Moringa oleifera',
+ 'Rosa canina','Trigonella foenum-graecum','Urtica dioica')
+fator <- function(x) {
+ x <- normalizar(x)
+ if(any(!is.na(x) & !x %in% lev)) stop('Tratamento desconhecido: confira a planilha.')
+ factor(x, levels=lev) # Fator nominal, com controle como referência.
+}
+arquivo <- params$arquivo
+if(!file.exists(arquivo)) stop('Coloque a planilha na mesma pasta do Rmd: ', arquivo)
+c0 <- as.data.frame(readxl::read_excel(arquivo, sheet='Sucrose Consumption'))
+w0 <- as.data.frame(readxl::read_excel(arquivo, sheet='Dry Weight', na=c('', 'NA')))
+s0 <- as.data.frame(readxl::read_excel(arquivo, sheet='Survival'))
+c0$Treatment <- fator(c0$Treatment)
+w0$treatment <- fator(w0$treatment); s0$treatment <- fator(s0$treatment)
+w0$dry_weight <- as.numeric(w0$dry_weight)
+w0$drymg <- 1000*w0$dry_weight # A planilha registra peso em gramas.
+cons <- c0[complete.cases(c0[c('cage','Treatment','day','loss')]),]
+peso <- w0[complete.cases(w0[c('cage','treatment','day','drymg')]),]
+sobre <- s0[complete.cases(s0[c('cage','treatment','day','status')]),]
+stopifnot(all(sobre$status %in% 0:1), all(sobre$day>=0),
+ !anyDuplicated(cons[c('cage','day')]),
+ !anyDuplicated(sobre[c('cage','individual')]))
+for(d in list(cons,peso,sobre)) {
+ tr <- if('Treatment' %in% names(d)) d$Treatment else d$treatment
+ stopifnot(all(tapply(as.character(tr),d$cage,function(x) length(unique(x)))==1))
+}
+cons$cage <- factor(cons$cage); peso$cage <- factor(peso$cage)
+sobre$cage <- factor(sobre$cage)
+cons <- cons[order(cons$cage,cons$day),]
+
+# Análise de referência: mesma estrutura cúbica aditiva do original.
+m_consumo <- lm(loss ~ Treatment + poly(day,3,raw=TRUE), data=cons)
+sm <- summary(m_consumo)
+m_tempo <- lm(loss ~ poly(day,3,raw=TRUE), data=cons)
+teste_tr <- anova(m_tempo,m_consumo)
+m_linear <- lm(loss ~ Treatment + day, data=cons)
+teste_curva <- anova(m_linear,m_consumo)
+dun <- multcomp::glht(m_consumo, linfct=multcomp::mcp(Treatment='Dunnett'))
+sdun <- summary(dun); cdun <- confint(dun)$confint
+tdun <- data.frame(Tratamento=lev[-1], Diferenca=coef(dun),
+ LI=cdun[,2], LS=cdun[,3], p=sdun$test$pvalues, row.names=NULL)
+
+# Sensibilidade longitudinal: intercepto por gaiola e correlação AR(1).
+# Centralização melhora estabilidade sem alterar a família polinomial.
+cons$tempo <- (cons$day-mean(cons$day))/10
+m_misto <- nlme::lme(loss ~ Treatment + poly(tempo,3,raw=TRUE),
+ random=~1|cage, correlation=nlme::corAR1(form=~day|cage),
+ data=cons, method='REML', control=nlme::lmeControl(msMaxIter=200))
+mm0 <- update(m_misto, method='ML')
+mm1 <- update(mm0, fixed=loss ~ poly(tempo,3,raw=TRUE))
+teste_misto <- anova(mm1,mm0)
+
+m_peso <- lm(drymg ~ day, data=peso)
+kw <- kruskal.test(drymg ~ treatment, data=peso)
+med <- tapply(peso$drymg,peso$treatment,median)
+pw <- vapply(lev[-1], function(tr) wilcox.test(
+ peso$drymg[peso$treatment==tr],peso$drymg[peso$treatment=='Sucrose'],
+ exact=FALSE, correct=TRUE)$p.value, numeric(1))
+tw <- data.frame(Tratamento=lev[-1], Diferenca=as.numeric(med[-1]-med[1]),
+ p=p.adjust(pw,'BH'))
+m_peso_misto <- nlme::lme(drymg ~ treatment + factor(day),
+ random=~1|cage, data=peso, method='REML')
+mp0 <- update(m_peso_misto, method='ML')
+mp1 <- update(mp0, fixed=drymg ~ factor(day))
+teste_peso_misto <- anova(mp1,mp0)
+
+km <- survfit(Surv(day,status) ~ treatment, data=sobre)
+lr <- survdiff(Surv(day,status) ~ treatment, data=sobre)
+p_lr <- pchisq(lr$chisq,length(lr$n)-1,lower.tail=FALSE)
+ps <- vapply(lev[-1],function(tr) {
+ d <- droplevels(sobre[sobre$treatment %in% c('Sucrose',tr),])
+ z <- survdiff(Surv(day,status) ~ treatment,data=d)
+ pchisq(z$chisq,1,lower.tail=FALSE)
+},numeric(1))
+ts <- data.frame(Tratamento=lev, Mediana=summary(km)$table[,'median'],
+ p=c(NA,p.adjust(ps,'BH')),row.names=NULL)
+cores <- c('#222222', grDevices::hcl.colors(12,'Dark 3'))
+names(cores) <- lev
+```
+
+<style>
+slides > slide { font-family: 'Segoe UI', Arial, sans-serif; color:#233431; background:#FAFBF8; }
+slides > slide hgroup h2 { color:#176B62; font-size:32px; line-height:1.15; }
+slides > slide hgroup h1 { color:#176B62; font-size:48px; }
+slides > slide article { font-size:23px; line-height:1.35; }
+slides > slide.title-slide { border-bottom:14px solid #C28A24; }
+strong { color:#176B62; }
+table { font-size:19px; line-height:1.15; width:100%; }
+slides > slide table th { background:#176B62 !important; color:white; }
+td, th { padding:6px 10px; }
+pre { font-size:17px; line-height:1.25; }
+.nota { font-size:17px; color:#536460; }
+slides > slide:after { color:#176B62; }
+</style>
+
+## Contexto e objetivo
+
+**Pergunta:** a suplementação com pós vegetais altera o consumo, a biomassa e a longevidade de abelhas-operárias?
+
+- Experimento com *Apis mellifera* em gaiolas.
+- Controle com sacarose a 50% e 12 suplementos vegetais.
+- Ênfase da apresentação: regressão, testes de hipóteses e avaliação dos pressupostos.
+
+<div class="nota">Base: código de Jessica Hemily de Sá Gonçalves e estudo de Brown et al. (2024), DOI: 10.1007/s13592-024-01094-4.</div>
+
+## Delineamento e unidade experimental
+
+- Planejamento descrito: **13 tratamentos × 6 gaiolas × 26 abelhas = 2.028 abelhas**.
+- A gaiola recebe o tratamento e constitui a unidade experimental.
+- Consumo: medições sucessivas por gaiola ao longo dos dias.
+- Peso: amostragem destrutiva nos dias 7 e 14, com abelhas diferentes.
+- Sobrevivência: tempo observado e indicador de evento por indivíduo.
+
+<div class="nota">Abelhas da mesma gaiola podem ser correlacionadas. O número de linhas não equivale ao número de réplicas independentes.</div>
+
+## Dados disponíveis na planilha
+
+```{r inventario}
+tab(data.frame(Desfecho=c('Consumo','Peso seco','Sobrevivência'),
+ Linhas=c(nrow(c0),nrow(w0),nrow(s0)),
+ Utilizadas=c(nrow(cons),nrow(peso),nrow(sobre)),
+ Gaiolas=c(nlevels(cons$cage),nlevels(peso$cage),nlevels(sobre$cage))))
+```
+
+- Peso: **`r nrow(w0)-nrow(peso)` valores ausentes**, sem imputação.
+- Sobrevivência: **`r sum(sobre$status==1)` mortes e `r sum(sobre$status==0)` censuras**.
+- A aba de sobrevivência tem `r 2028-nrow(s0)` registros a menos que o total planejado. A planilha não explica essa diferença.
+
+## Preparação e rastreabilidade
+
+- Leitura das abas pelos nomes, sem caminhos fixos do computador.
+- Tratamentos como fatores nominais, com **Sucrose** como referência.
+- Padronização de “Moringa oelifera”, “Spirulina platensins” e “Calendulae officinalis”.
+- Peso convertido de gramas para miligramas.
+- Exclusão de casos incompletos apenas no desfecho correspondente.
+- Verificação de gaiola–dia no consumo e gaiola–indivíduo na sobrevivência.
+
+## Estratégia de análise
+
+```{r estrategia}
+tab(data.frame(Desfecho=c('Consumo','Peso seco','Sobrevivência'),
+ Referencia=c('Regressão cúbica + Dunnett','Regressão temporal + KW / Wilcoxon','Kaplan–Meier + log-rank'),
+ Complemento=c('Modelo misto com AR(1)','Modelo misto por gaiola','Censura e dependência discutidas')))
+```
+
+**Nível de referência:** 5%. Dunnett controla o erro familiar das comparações com o controle. Benjamini–Hochberg (BH) controla a taxa de falsas descobertas.
+
+## Consumo: distribuição observada
+
+```{r histograma}
+ggplot(cons,aes(loss)) + geom_histogram(bins=35,fill=verde,color='white') +
+ labs(x='Consumo (mg/abelha/dia)',y='Número de registros')
+```
+
+<div class="nota">As observações representam médias por abelha em cada gaiola e dia. A distribuição da resposta, sozinha, não determina a normalidade dos resíduos.</div>
+
+## Consumo ao longo do tempo
+
+```{r trajetorias, fig.height=4.9}
+ggplot(cons,aes(day,loss)) + geom_point(alpha=.12,size=.5,color=verde) +
+ geom_smooth(method='lm',formula=y~poly(x,3),se=FALSE,color=ouro,linewidth=.8) +
+ facet_wrap(~Treatment,ncol=4) + labs(x='Dia',y='Consumo (mg/abelha/dia)') +
+ theme(strip.text=element_text(size=10),axis.text=element_text(size=9))
+```
+
+<div class="nota">Curvas por tratamento são exploratórias. O modelo de referência a seguir impõe a mesma forma temporal para todos.</div>
+
+## Modelo de referência para consumo
+
+$$Y_{ct}=\beta_0+\sum_{j=1}^{12}\alpha_j I(T_c=j)
++\beta_1t+\beta_2t^2+\beta_3t^3+\varepsilon_{ct}.$$
+
+- **12 coeficientes** representam diferenças em relação ao controle.
+- A curva é cúbica no tempo, mas o modelo é linear nos parâmetros.
+- Sem interação: diferenças entre tratamentos são constantes no tempo.
+- Referência clássica: erros independentes, média zero e variância constante. Normalidade sustenta a inferência exata.
+
+## Hipóteses para consumo
+
+- **F global:** todos os 15 coeficientes, exceto o intercepto, são zero.
+- **Tratamento ajustado pelo tempo:** $H_0: \alpha_1=\cdots=\alpha_{12}=0$.
+- **Curvatura:** $H_0: \beta_2=\beta_3=0$, comparando modelo linear e cúbico.
+- **Dunnett:** $H_{0j}:\alpha_j=0$, com ajuste conjunto para 12 contrastes.
+
+Um F global significativo pode refletir somente a evolução temporal.
+
+## Ajuste e decomposição da variabilidade
+
+```{r anova}
+n <- nobs(m_consumo); p <- length(coef(m_consumo))
+sqe <- deviance(m_consumo); sqt <- sum((cons$loss-mean(cons$loss))^2)
+fglobal <- unname(sm$fstatistic[1])
+tab(data.frame(Fonte=c('Regressão','Resíduo','Total'),
+ GL=c(p-1,n-p,n-1), SQ=round(c(sqt-sqe,sqe,sqt),2),
+ QM=round(c((sqt-sqe)/(p-1),sqe/(n-p),NA),2)))
+```
+
+**F = `r fmt(fglobal)`**, p `r pv(pf(fglobal,p-1,n-p,lower.tail=FALSE))`.
+
+**R² = `r fmt(sm$r.squared,3)`** e **R² ajustado = `r fmt(sm$adj.r.squared,3)`**.
+
+<div class="nota">SQT = SQReg + SQRes. R² mede ajuste na amostra e não valida pressupostos ou capacidade preditiva.</div>
+
+## Tempo e tratamento: testes separados
+
+```{r testes-consumo}
+tab(data.frame(Teste=c('Tratamento, ajustado pelo tempo','Curvatura, ajustada pelo tratamento'),
+ F=fmt(c(teste_tr$F[2],teste_curva$F[2])),
+ p=pv(c(teste_tr$`Pr(>F)`[2],teste_curva$`Pr(>F)`[2]))))
+```
+
+A curva temporal explica parte das diferenças observadas entre dias. A comparação entre tratamentos exige seu próprio teste e os contrastes com o controle.
+
+## Consumo: diferenças em relação ao controle
+
+```{r dunnett, fig.height=4.8}
+ggplot(tdun,aes(Diferenca,reorder(Tratamento,Diferenca))) +
+ geom_vline(xintercept=0,linetype=2,color='gray50') +
+ geom_segment(aes(x=LI,xend=LS,yend=Tratamento),color=verde,linewidth=.8) +
+ geom_point(size=2.6,color=verde) +
+ labs(x='Diferença ajustada (mg/abelha/dia), IC simultâneo de 95%',y=NULL)
+```
+
+<div class="nota">Dunnett: `r sum(tdun$p<.05)` de 12 contrastes com p ajustado &lt; 0,05. Intervalos condicionados aos pressupostos do modelo clássico.</div>
+
+## Diagnóstico do modelo de consumo
+
+```{r diagnostico-consumo, fig.height=4.8}
+par(mfrow=c(2,2),mar=c(4,4,2,1),cex=.85)
+plot(m_consumo,which=c(1,2,3,5),ask=FALSE)
+```
+
+<div class="nota">Há tendência residual negativa nos maiores ajustados e dispersão variável. O Q–Q é aproximadamente linear no centro. A estrutura média e a variância merecem revisão.</div>
+
+## Dependência dentro da gaiola
+
+$$Y_{ct}=X_{ct}\beta+b_c+e_{ct},\qquad b_c\sim N(0,\tau^2).$$
+$$\operatorname{Cor}(e_{ct},e_{cs})=\rho^{|t-s|}.$$
+
+- Complemento: intercepto aleatório por gaiola e resíduos AR(1).
+- Tratamentos comparados por razão de verossimilhanças com **ML**.
+- Estimativas finais de variância obtidas com **REML**.
+
+Correlação estimada: **ρ = `r fmt(coef(m_misto$modelStruct$corStruct,unconstrained=FALSE))`**.
+Teste conjunto de tratamento: **p `r pv(teste_misto[['p-value']][2])`**.
+
+<div class="nota">Sensibilidade adicional, não presente no ajuste original. Pressupõe AR(1) e variância residual constante. A perda de gaiolas por mortalidade pode ser informativa.</div>
+
+## Diagnóstico do complemento longitudinal
+
+```{r diagnostico-misto, fig.height=4.7}
+par(mfrow=c(1,3),mar=c(4,4,2,1),cex=.85)
+rn <- residuals(m_misto,type='normalized')
+plot(fitted(m_misto),rn,pch=16,cex=.35,col=adjustcolor(verde,.25),
+ xlab='Ajustados',ylab='Resíduo normalizado'); abline(h=0,lty=2)
+qqnorm(rn,pch=16,cex=.35); qqline(rn,col=ouro)
+a <- nlme::ACF(m_misto,resType='normalized',maxLag=12)
+plot(a$lag,a$ACF,type='h',xlab='Defasagem de observações',ylab='ACF residual'); abline(h=0)
+```
+
+<div class="nota">A ACF é calculada dentro das gaiolas. Persistência de padrões indica que a estrutura proposta ainda pode ser insuficiente.</div>
+
+## Peso seco: comparação exploratória
+
+```{r peso-box, fig.height=4.9}
+ggplot(peso,aes(drymg,treatment,fill=factor(day))) +
+ geom_boxplot(outlier.size=.7) + scale_fill_manual(values=c(verde,ouro)) +
+ labs(x='Peso seco (mg)',y=NULL,fill='Dia') + theme(legend.position='top')
+```
+
+## Peso: modelo temporal e hipóteses
+
+Modelo original: $W_i=\beta_0+\beta_1\,dia_i+\varepsilon_i$.
+
+- $H_0: \beta_1=0$ compara as médias nos dois dias observados.
+- p temporal = **`r pv(coef(summary(m_peso))[2,4])`**.
+- R² = **`r fmt(summary(m_peso)$r.squared,4)`**.
+- Esse modelo não testa diferenças entre suplementos.
+- Kruskal–Wallis: igualdade das distribuições entre tratamentos. Uma interpretação estrita em medianas requer formas semelhantes.
+
+## Peso: diagnóstico do modelo temporal
+
+```{r diagnostico-peso, fig.height=4.7}
+par(mfrow=c(1,2),mar=c(4,4,2,1))
+plot(m_peso,which=c(1,2),ask=FALSE)
+```
+
+<div class="nota">Apenas dois dias produzem dois níveis ajustados. Baixo R² ou p elevado não demonstram, por si, violação de normalidade.</div>
+
+## Peso: comparações não paramétricas
+
+Kruskal–Wallis: **χ² = `r fmt(kw$statistic)`**, p **`r pv(kw$p.value)`**.
+
+```{r tabela-peso}
+tabela_peso <- data.frame(Tratamento=tw$Tratamento,
+ 'Diferença de medianas (mg)'=fmt(tw$Diferenca),
+ 'p Wilcoxon, BH'=pv(tw$p),check.names=FALSE)
+tab(tabela_peso[1:6,])
+```
+
+## Peso: comparações com o controle (continuação)
+
+```{r tabela-peso-continuacao}
+tab(tabela_peso[7:12,])
+```
+
+<div class="nota">Tratamento menos controle, reunindo dias 7 e 14. BH aplicado somente aos 12 contrastes bilaterais com o controle. Resultados exploratórios: ignoram agrupamento.</div>
+
+## Peso: complemento com efeito de gaiola
+
+$$W_{ic}=\beta_0+\sum_{j=1}^{12}\alpha_j I(T_c=j)
++\delta I(dia=14)+b_c+\varepsilon_{ic}.$$
+
+- Ajuste por dia e intercepto aleatório por gaiola.
+- Teste conjunto de tratamento por ML: **p `r pv(teste_peso_misto[['p-value']][2])`**.
+- Diferença ajustada entre dias: **`r fmt(nlme::fixef(m_peso_misto)['factor(day)14'])` mg**.
+- As abelhas pesadas nos dois dias são diferentes. A dependência vem da gaiola compartilhada.
+
+<div class="nota">O teste conjunto não identifica quais suplementos diferem do controle. A normalidade e a variância residual ainda precisam ser avaliadas.</div>
+
+## Peso: diagnóstico do modelo misto
+
+```{r diagnostico-peso-misto, fig.height=4.5}
+par(mfrow=c(1,2),mar=c(4,4,2,1))
+rp <- residuals(m_peso_misto,type='normalized')
+plot(fitted(m_peso_misto),rp,pch=16,col=adjustcolor(verde,.5),
+ xlab='Ajustados (mg)',ylab='Resíduos normalizados'); abline(h=0,lty=2)
+qqnorm(rp,pch=16,col=verde); qqline(rp,col=ouro)
+```
+
+## Sobrevivência: eventos e censura
+
+- `status = 1`: morte. `status = 0`: observação censurada.
+- **`r fmt(100*mean(sobre$status==0),1)`%** dos registros são censurados.
+- `r sum(sobre$status==0 & sobre$day %in% c(7,14))` censuras ocorrem nos dias de coleta de peso (7 e 14).
+- Há `r sum(sobre$status==0 & !sobre$day %in% c(7,14))` outras censuras, nos dias `r paste(sort(unique(sobre$day[sobre$status==0 & !sobre$day %in% c(7,14)])),collapse=' e ')`. A planilha não informa sua causa.
+
+**Encerrar após a última morte não elimina a censura de abelhas retiradas antes.** O tempo de uma observação censurada não é tempo até a morte.
+
+## Sobrevivência: estimador e hipóteses
+
+$$\widehat S(t)=\prod_{t_i\leq t}\left(1-\frac{d_i}{n_i}\right).$$
+
+- Kaplan–Meier estima a probabilidade de sobreviver além de $t$.
+- Log-rank global: $H_0$ de curvas de sobrevivência iguais.
+- Comparações bilaterais com o controle: 12 testes, ajuste BH.
+- Pressupostos: censura não informativa e independência individual para a inferência convencional.
+
+<div class="nota">O compartilhamento de gaiolas limita os p-valores convencionais. As medianas abaixo vêm de Kaplan–Meier, e não da mediana dos tempos observados.</div>
+
+## Curvas de Kaplan–Meier
+
+```{r curvas-km, fig.height=4.9}
+par(mar=c(4,4,1,1))
+plot(km,col=cores,lwd=2,mark.time=TRUE,conf.int=FALSE,
+ xlab='Tempo (dias)',ylab='Probabilidade de sobrevivência',xlim=c(0,100))
+legend('topright',legend=lev,col=cores,lwd=2,bty='n',cex=.72)
+```
+
+<div class="nota">Marcas indicam censuras. A área após 69 dias acomoda a legenda, sem extrapolação das curvas. Log-rank global: p `r pv(p_lr)`.</div>
+
+## Sobrevivência: resultados por tratamento
+
+```{r tabela-sobrevivencia}
+tabela_sobre <- data.frame(Tratamento=ts$Tratamento,'Mediana KM (dias)'=ts$Mediana,
+ 'p log-rank vs. controle, BH'=pv(ts$p),check.names=FALSE)
+tab(tabela_sobre[1:7,])
+```
+
+## Sobrevivência: resultados (continuação)
+
+```{r tabela-sobre-continuacao}
+tab(tabela_sobre[8:13,])
+```
+
+<div class="nota">Sem p para o próprio controle. Log-rank detecta diferenças nas curvas, não testa especificamente diferenças de medianas. A direção deve ser lida junto às curvas.</div>
+
+## Interpretação integrada
+
+- **Consumo:** `r sum(tdun$p<.05)` contrastes de Dunnett significativos. Ausência de evidência não demonstra equivalência entre dietas.
+- **Peso:** `r sum(tw$p<.05 & tw$Diferenca>0)` suplementos apresentam maior mediana com p BH &lt; 0,05 na análise individual.
+- **Sobrevivência:** `r sum(ts$p<.05,na.rm=TRUE)` comparações com o controle têm p BH &lt; 0,05.
+- A relevância biológica depende da magnitude das diferenças e da estrutura experimental, além do p-valor.
+
+## Limitações e próximos passos
+
+- A contagem observada difere do planejamento, sem explicação na planilha.
+- Ausência de peso e censura adicional exigem registro das causas.
+- Wilcoxon e log-rank individuais não incorporam a correlação por gaiola.
+- Os modelos mistos são análises de sensibilidade com pressupostos próprios.
+- Extensão para sobrevivência: modelo com agrupamento por gaiola e avaliação dos pressupostos antes de interpretar efeitos.
+- Extrapolação para colônias em campo exige novos estudos.
+
+## Conclusões
+
+**O efeito dos suplementos depende do desfecho avaliado.**
+
+Os dados permitem comparar consumo, peso e sobrevivência, mas a força da inferência depende de respeitar a unidade experimental e a censura.
+
+Para a disciplina, a contribuição central é distinguir **significância global, efeito de tratamento, tamanho do efeito e adequação do modelo**.
+
+## Referências e observações
+
+- Brown, A. F.; Wiedmer, S.; Retschnig, G.; Neumann, P. (2024). *Feeding with plant powders increases longevity and body weight of Western honeybee workers (Apis mellifera).* Apidologie, 55, 54. [Artigo e métodos](https://doi.org/10.1007/s13592-024-01094-4).
+- Montgomery, D. C.; Peck, E. A.; Vining, G. G. (2012). *Introduction to Linear Regression Analysis*. 5ª ed. Wiley.
+- Código-base: `codigo_abelhas.Rmd`, de Jessica Hemily de Sá Gonçalves. Dados: `Plant-Powder-All-Data-Final.xlsx` fornecido com o código.
+
+<div class="nota">Os resultados desta apresentação são recalculados a partir do arquivo fornecido. Correções: grafias, censura, n efetivo, hipóteses e multiplicidade. Dunnett e log-rank foram implementados, pois eram anunciados mas não executados no código-base.</div>
+
+## Apêndice: código dos ajustes principais
+
+```{r codigo-modelos, echo=TRUE, eval=FALSE}
+# Estrutura original para consumo, com controle como referência.
+m_consumo <- lm(loss ~ Treatment + poly(day,3,raw=TRUE), data=cons)
+# Complemento: gaiola e correlação temporal.
+m_misto <- nlme::lme(loss ~ Treatment + poly(tempo,3,raw=TRUE),
+  random=~1|cage, correlation=nlme::corAR1(form=~day|cage), data=cons)
+# A censura entra explicitamente na resposta de sobrevivência.
+km <- survfit(Surv(day,status) ~ treatment, data=sobre)
+```
+
+## Apêndice: reprodutibilidade
+
+```{r versoes}
+tab(data.frame(Pacote=pacotes,Versao=vapply(pacotes,
+ function(x) as.character(packageVersion(x)),character(1))))
+```
+
+<div class="nota">`r R.version.string`. Semente: 2026. Edite o cabeçalho para informar nomes da equipe. Todas as análises são executadas novamente ao usar Knit.</div>
